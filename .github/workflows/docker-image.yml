@@ -13,35 +13,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      - name: Build and tag Docker image
-        run: |
-          docker build -t chairamama-website:latest .
-      
-      - name: Save Docker image to tarball
-        run: |
-          docker save chairamama-website:latest | gzip > chairamama-website.tar.gz
-
       - name: Transfer Docker image to EC2
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.HOST }}
-          username: ubuntu
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 22
-          script: |
-            mkdir -p /tmp
-            scp -i /tmp/ssh_key -P 22 chairamama-website.tar.gz ubuntu@${{ secrets.HOST }}:/tmp/chairamama-website.tar.gz || exit 1
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          HOST: ${{ secrets.HOST }}
+
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -P 22 chairamama-website.tar.gz ubuntu@$HOST:/tmp/chairamama-website.tar.gz || exit 1
 
       - name: Deploy to EC2
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.HOST }}
-          username: ubuntu
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 22
-          script: |
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          HOST: ${{ secrets.HOST }}
+
+        run: |
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ubuntu@$HOST '
             cd /tmp &&
             sudo docker load < chairamama-website.tar.gz || exit 1
             sudo docker stop chairamama-website || true
             sudo docker rm chairamama-website || true
             sudo docker run -d --name chairamama-website -p 2024:3000 chairamama-website:latest || exit 1
+          '
