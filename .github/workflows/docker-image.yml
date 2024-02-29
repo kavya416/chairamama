@@ -13,6 +13,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
 
+      - name: Build and tag Docker image
+        run: |
+          sudo docker build -t chairamama-website:latest .
+          sudo docker save chairamama-website:latest | gzip > chairamama-website.tar.gz
+
       - name: Transfer Docker image to EC2
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -24,7 +29,13 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
 
-          scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -P 22 chairamama-website.tar.gz ubuntu@$HOST:/tmp/chairamama-website.tar.gz || exit 1
+          # Ensure the file exists before attempting to transfer
+          if [ -f "chairamama-website.tar.gz" ]; then
+            scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -P 22 chairamama-website.tar.gz ubuntu@$HOST:/tmp/chairamama-website.tar.gz || exit 1
+          else
+            echo "Error: chairamama-website.tar.gz file not found"
+            exit 1
+          fi
 
       - name: Deploy to EC2
         env:
